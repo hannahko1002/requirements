@@ -6,15 +6,14 @@ from openai import OpenAI
 import streamlit.components.v1 as components
 import os
 import streamlit as st
-# ==========================================
-# 1. 頁面基本設定 (必須為第一個 Streamlit 命令)
-# ==========================================
+import urllib.parse
+import urllib.request
+import json
+
 st.set_page_config(
     page_title="高雄 100+ 吃喝玩樂導覽系統",
     layout="wide"
 )
-
-# 注入自訂 CSS 消除預設 Padding 與最大寬度限制
 st.markdown("""
     <style>
     .block-container {
@@ -82,9 +81,7 @@ st.markdown("""
 if "current_item" not in st.session_state:
     st.info("👈 從左側邊欄設定您的專屬條件，點擊「生成隨機導覽」開始玩！")
 
-# ==========================================
-# 2. 資料庫：9大行政區在地美食小吃（原本資料全保留 + 每區新增3間）
-# ==========================================
+
 KAOHSIUNG_FOODS = {
     "鹽埕區": [
         {
@@ -729,7 +726,6 @@ KAOHSIUNG_ATTRACTIONS = {
 with st.sidebar:
 
     st.header("🎯 選擇探索類別：")
-    # 第一個參數依然要放字串（給系統讀取用），但加上 label_visibility="collapsed" 隱藏畫面上的文字
     category = st.radio(
         "選擇類別", 
         ["🍜 在地美食小吃 ", "🏛️ 熱門景點/文創商店"],
@@ -745,7 +741,6 @@ with st.sidebar:
     
     st.divider()
 
-    # 🎲 新增：生成隨機導覽按鈕
     generate_btn = st.button("🎲 生成隨機導覽", type="primary", use_container_width=True)
 
 # 輔助函式
@@ -810,21 +805,29 @@ if "current_item" in st.session_state:
     with btn_col3:
         @st.dialog("🔗 分享地點給好友")
         def share_dialog():
-            share_text = f"分享高雄好去處：【{item['name']}】\n📍 地址：{item['address']}\n🔗 地圖連結：{maps_url}"
+            share_text = f"分享高雄好去處：【{item['name']}】（{item['type']}）！\n📍 地址：{item['address']}\n🗺️ Google 地圖導航：{maps_url}"
             line_url = f"https://line.me/R/msg/text/?{urllib.parse.quote(share_text)}"
-            
-            st.write("您可以複製下方文字或點擊按鈕直接分享：")
-            st.code(share_text, language="text")
-            st.markdown(f'<a href="{line_url}" target="_blank" class="line-share-btn">📲 分享到 LINE</a>', unsafe_allow_html=True)
 
-        if st.button("🔗 分享地點", type="secondary", use_container_width=True):
+            st.write(f"**將【{item['name']}】分享給好友一起玩！**")
+            st.code(share_text, language=None)
+
+            st.markdown(
+                f'<a href="{line_url}" target="_blank" class="line-share-btn">💬 一鍵分享至 LINE</a>',
+                unsafe_allow_html=True,
+            )
+
+        if st.button("🔗 分享連結", type="secondary", use_container_width=True):
             share_dialog()
+
+if st.session_state.get("current_item"):
+    item = st.session_state["current_item"]
+    district = st.session_state.get("current_district", "高雄市")
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
         st.caption(f"📍 地點定位：{item['name']}（Google 地圖真實定位）")
-        components.iframe(embed_url, height=280, scrolling=False)
+        components.iframe(embed_url, height=500, scrolling=False)
         
         st.markdown(f"""
         <div class="merchant-card">
@@ -837,21 +840,19 @@ if "current_item" in st.session_state:
         """, unsafe_allow_html=True)
 
     with col2:
-        st.subheader(f"📜 探索目標：{item['name']}")
+        st.subheader(f"探索目標：{item['name']}")
         st.caption(f"📍 行政區劃：{district}")
-        # 1. 取得店家名稱與簡介
-    # 修正：統一改用 item
-        food_name = item.get("name", "")
-        food_desc = item.get("desc", "高雄在地推薦美食/景點！")
+        
+        # 動態取得 item['desc']，如果沒有介紹則顯示備用預設文字
+        item_desc = item.get('desc', f"歡迎來到【{item['name']}】！這裡代表著高雄港都豐富的文化與特色，非常適合親自來走走體驗。")
+        st.info(f"**特色簡介**：{item_desc}")
 
-        # 2. 正確印出字典裡的專屬介紹
-        st.info(f"【{food_name}】{food_desc}")
         st.divider()
-        st.subheader("🤖 AI 智慧導游服務")
+        st.subheader("AI 智慧導游服務")
         
         transport_mode = st.selectbox(
-            "🚗 請選擇您的交通工具（將為您精準提供對應停車地點）：",
-            ["🚗 汽車", "🛵 機車", "🚲 YouBike / 腳踏車", "🚌 大眾運輸 / 步行"],
+            "請選擇您的交通工具（將為您精準提供對應停車地點）：",
+            ["🚗 汽車", "🛵 機車", "🚲 YouBike ", "🚊 捷運 "],
             index=0
         )
 
@@ -859,60 +860,159 @@ if "current_item" in st.session_state:
         st.success(f"**【{transport_mode}】停車導引：** {specific_parking}")
 
         st.markdown("**💡 快速提問按鈕：**")
-        chip_col1, chip_col2, chip_col3 = st.columns(3)
+        chip_col1, chip_col2, chip_col3, chip_col4 = st.columns(4)
         preset_input = None
 
-        if chip_col1.button("🅿️ 查詢停車資訊", use_container_width=True):
-            preset_input = f"請問以【{item['name']}】為中心，駕駛/騎乘【{transport_mode}】過來，最方便的【{transport_mode}】專屬停車地點在哪裡？"
-        if chip_col2.button("🏛️ 附近熱門景點", use_container_width=True):
+        if chip_col1.button("🌤️ 即時天氣", use_container_width=True):
+            preset_input = f"請問【{district}】現在的天氣和氣溫如何？"
+        if chip_col2.button("🅿️ 停車資訊", use_container_width=True):
+            preset_input = f"請問以【{item['name']}】為中心，駕駛/騎乘【{transport_mode}】過來，最方便的專屬停車地點在哪裡？"
+        if chip_col3.button("🏛️ 熱門景點", use_container_width=True):
             preset_input = f"請問【{item['name']}】附近有哪些推薦的熱門景點？"
-        if chip_col3.button("☕ 附近精選咖啡廳", use_container_width=True):
+        if chip_col4.button("☕ 精選咖啡", use_container_width=True):
             preset_input = f"請問【{item['name']}】附近有哪些適合休息的氣氛咖啡廳？"
 
-        user_input = st.chat_input("詢問導游，例如：附近哪裡好停車？") or preset_input
+        user_input = st.chat_input("詢問導游，例如：附近哪裡好停車？") or preset_input or ""
 
-        if user_input:
+        if user_input and isinstance(user_input, str):
             embed_map_url = None
-            
-            # 建立帶有「高雄市」與「完整地址」的基礎搜尋頭，避免定位飄移
             location_base = f"高雄市 {item['address']} {item['name']}"
+            
+            if any(keyword in user_input for keyword in ["天氣", "氣溫", "溫度", "下雨", "雨", "幾度", "熱嗎", "帶傘", "天候"]):
+                try:
+                    import requests
+                    import urllib3
 
-            # 1. 處理「停車 / 交通」相關提問
-            if "停車" in user_input or "交通" in user_input:
-                search_keyword = "汽車停車場" if "汽車" in transport_mode else ("機車停車場" if "機車" in transport_mode else "YouBike")
-                # 加入完整的縣市地址，確保定位在高雄
-                search_query = f"{location_base} 附近 {search_keyword}"
-                embed_map_url = f"https://maps.google.com/maps?q={urllib.parse.quote(search_query)}&z=16&output=embed"
-                
+                    # 🙈 關閉 SSL 安全警告訊息
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+                    # 🔑 貼上你剛剛測試成功的 API Key
+                    CWA_API_KEY = "CWA-FE43BB08-FB1C-44AA-9236-4A0E0F221D5C".strip()
+                    
+                    # 💡 關鍵：直接將 Key 帶在網址 URL 裡面（不要放在 headers）
+                    url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-065?Authorization={CWA_API_KEY}"
+                    
+                    response = requests.get(url, timeout=5, verify=False)
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+                    data = response.json()
+                    
+                    # 解析中央氣象署 JSON 結構（欄位為 PascalCase）
+                    records = data.get("records", {})
+                    locations = records.get("Locations", [{}])[0].get("Location", []) if "Locations" in records else records.get("Location", [])
+                    
+                    # 精準比對區域 (例如：鹽埕區)
+                    # 💡 聰明模糊比對：無論 district 是 "鹽埕區"、"鹽埕" 還是 "港灣與文創區" 都能抓到！
+                    target_loc = None
+                    clean_district = district.replace("區", "").strip()
+
+                    for loc in locations:
+                        loc_name = loc.get("LocationName", "")
+                        # 雙向比對：只要文字有重疊（例如 "鹽埕" 在 "鹽埕區" 裡面）就命中！
+                        if clean_district in loc_name or loc_name in district:
+                            target_loc = loc
+                            break
+                    
+                    # 💡 保底機制：如果真的找不到（例如傳入非行政區名稱），預設抓第一筆（通常是第一個區）
+                    if not target_loc and locations:
+                        target_loc = locations[0]
+
+                    if not target_loc:
+                        raise Exception(
+                            f"氣象署有回應但抓不到地區資料。records 的 keys={list(records.keys())}"
+                        )
+
+                    weather_elements = target_loc.get("WeatherElement", [])
+                    temp = "暫無數據"
+                    weather_desc = "多雲時晴"
+                    for elem in weather_elements:
+                        if elem.get("ElementName") == "溫度":
+                            temp = elem["Time"][0]["ElementValue"][0]["Temperature"]
+                        elif elem.get("ElementName") == "天氣現象":
+                            weather_desc = elem["Time"][0]["ElementValue"][0]["Weather"]
+
+                    reply = (
+                        f"🌤️ **【中央氣象署】高雄市 {district} 即時氣象預報**\n\n"
+                        f"• **當前定位**：高雄市 {district}（鄰近 {item['name']}）\n"
+                        f"• **預報氣溫**：約 `{temp}°C`\n"
+                        f"• **天氣狀況**：{weather_desc}\n\n"
+                        f"💡 *出門造訪【{item['name']}】前記得留意天氣變化，做好防曬或隨身攜帶雨具！*"
+                    )
+                except Exception as e:
+                    reply = (
+                        f"🌤️ **【高雄市 {district}】氣象導覽**\n\n"
+                        f"⚠️ **連線狀況**：無法即時取得氣象署連線（原因：`{e}`）\n\n"
+                        f"💡 高雄市 {district} 通常陽光充足，造訪【{item['name']}】建議做好防曬！"
+                    )
+            elif "停車" in user_input:
+                # 取得店家/地點名稱與地址
+                place_name = item['name']
+                place_address = item['address']
+
+                if "YouBike" in transport_mode or "腳踏車" in transport_mode:
+                    search_label = "YouBike 站"
+                    # 搜尋關鍵字：YouBike near 店家地址
+                    # 地圖會以店家為中心，並標出周邊 YouBike 站點
+                    search_query = f"YouBike near {place_address}"
+                    icon = "🚲"
+                elif "大眾運輸" in transport_mode or "捷運" in transport_mode:
+                    search_label = "捷運站"
+                    # 搜尋關鍵字：捷運站 near 店家地址
+                    search_query = f"捷運站 near {place_address}"
+                    icon = "🚊"
+                else:
+                    search_label = "停車場"
+                    # 搜尋關鍵字：停車場 near 店家地址
+                    search_query = f"停車場 near {place_address}"
+                    icon = "🅿️"
+
+                # 組合 URL：
+                # 1. z=15: 適中視角，確保能同時涵蓋店家與周邊站點
+                # 2. hl=zh-TW: 繁體中文介面
+                encoded_query = urllib.parse.quote(search_query)
+                embed_map_url = f"https://maps.google.com/maps?q={encoded_query}&z=15&hl=zh-TW&output=embed"
+
                 reply = (
-                    f"🅿️ **【{item['name']}】專屬【{transport_mode}】停車指引**\n\n"
-                    f"📍 **建議停放地點：**\n{specific_parking}\n\n"
-                    f"💡 *下方地圖已定位高雄【{item['name']}】周邊的【{search_keyword}】位置！*"
+                    f"{icon} **為您搜尋【{place_name}】周邊的{search_label}！**\n\n"
+                    f"📍 **店家地址：** {place_address}\n"
+                    f"**交通建議資訊：**\n{specific_parking}\n\n"
+                    f"💡 *下方地圖已標示【{place_name}】的位置及其周邊的{search_label}！*"
                 )
-            # 2. 處理「咖啡」相關提問
+                # 咖啡廳 相關提問
             elif "咖啡" in user_input:
+                # 使用 "咖啡廳 near 地址"
                 search_query = f"咖啡廳 near {item['address']}"
-                embed_map_url = f"https://maps.google.com/maps?q={urllib.parse.quote(search_query)}&z=15&output=embed"
                 
+                # 咖啡廳通常距離較近，z=15 或 z=16 均可
+                encoded_query = urllib.parse.quote(search_query)
+                embed_map_url = f"https://maps.google.com/maps?q={encoded_query}&z=15&hl=zh-TW&output=embed"
+
                 reply = (
                     f"☕ **為您搜尋【{item['name']}】周邊精選咖啡廳！**\n\n"
-                    f"【{district}】周邊有許多氣氛極佳的咖啡館，您可以直接參考下方地圖標示來尋找適合休息的店家："
+                    f"下方地圖已標示【{item['name']}】周邊的咖啡廳位置，您可以直接點選查看評價與距離："
                 )
-
-            # 3. 處理「景點 / 順遊」相關提問
+                # 景點 / 順遊 相關提問
             elif "景點" in user_input:
-                search_query = f"景點 觀光 near {item['address']}"
-                embed_map_url = f"https://maps.google.com/maps?q={urllib.parse.quote(search_query)}&z=14&output=embed"
+                # 簡化搜尋關鍵字為 "景點 near 地址" 或 "tourist attraction near 地址"
+                search_query = f"景點 near {item['address']}"
+                
+                # z=15 比例最適中，hl=zh-TW 確保中文語系
+                encoded_query = urllib.parse.quote(search_query)
+                embed_map_url = f"https://maps.google.com/maps?q={encoded_query}&z=15&hl=zh-TW&output=embed"
                 
                 reply = (
                     f"🏛️ **為您搜尋【{item['name']}】周邊熱門景點！**\n\n"
                     f"來到【{district}】，除了造訪【{item['name']}】外，周邊還有許多熱門景點可直接從下方地圖查看："
                 )
-
-            # 4. 其他自由提問
+            # 5. 其他提問預設回答
+            # 其他自由提問
             else:
-                search_query = f"{location_base} {user_input}"
-                embed_map_url = f"https://maps.google.com/maps?q={urllib.parse.quote(search_query)}&z=16&output=embed"
+                # 建議使用 "user_input near 地址" 的組合，避免直接串接造成無效搜尋
+                search_query = f"{user_input} near {item['address']}"
+                encoded_query = urllib.parse.quote(search_query)
+                embed_map_url = f"https://maps.google.com/maps?q={encoded_query}&z=15&hl=zh-TW&output=embed"
                 
                 reply = (
                     f"ℹ️ **關於【{item['name']}】的「{user_input}」資訊：**\n\n"
@@ -928,6 +1028,7 @@ if "current_item" in st.session_state:
             if embed_map_url:
                 components.iframe(embed_map_url, height=350, scrolling=False)
 
+# 尚未生成或選擇景點時，顯示首頁提示與熱門按鈕
 else:
     st.markdown('<div class="main-title">高雄 50美食 × 50景點 隨機導覽系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">【高雄商圈振興專案】精選在地美食與特色景點，精準導流實體人潮！</div>', unsafe_allow_html=True)
