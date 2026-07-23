@@ -826,7 +826,7 @@ if st.session_state.get("current_item"):
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        components.iframe(embed_url, height=400, scrolling=False)
+        components.iframe(embed_url, height=350, scrolling=False)
         
         st.markdown(f"""
         <div class="merchant-card">
