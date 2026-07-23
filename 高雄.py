@@ -27,7 +27,7 @@ st.markdown("""
         text-align: justify !important;
         text-justify: inter-ideograph;
     }
-    .main-title { font-size: 30px; font-weight: bold; color: #0066CC; text-align: center !important; margin-bottom: 5px; }
+    .main-title { font-size: 40px; font-weight: bold; color: #0066CC; text-align: center !important; margin-bottom: 5px; }
     .sub-title { font-size: 15px; color: #888888; text-align: center !important; margin-bottom: 20px; }
     
     .merchant-card { 
@@ -826,8 +826,7 @@ if st.session_state.get("current_item"):
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.caption(f"📍 地點定位：{item['name']}（Google 地圖真實定位）")
-        components.iframe(embed_url, height=500, scrolling=False)
+        components.iframe(embed_url, height=400, scrolling=False)
         
         st.markdown(f"""
         <div class="merchant-card">
@@ -840,12 +839,13 @@ if st.session_state.get("current_item"):
         """, unsafe_allow_html=True)
 
     with col2:
-        st.subheader(f"探索目標：{item['name']}")
+        # 僅在此處加上 margin-top 修正，向上拉平對齊左側的 caption
+        st.markdown(f"<h3 style='margin-top: -12px; margin-bottom: 4px; font-weight: bold;'>探索目標：{item['name']}</h3>", unsafe_allow_html=True)
         st.caption(f"📍 行政區劃：{district}")
         
         # 動態取得 item['desc']，如果沒有介紹則顯示備用預設文字
         item_desc = item.get('desc', f"歡迎來到【{item['name']}】！這裡代表著高雄港都豐富的文化與特色，非常適合親自來走走體驗。")
-        st.info(f"**特色簡介**：{item_desc}")
+        st.info(f"💡 **特色簡介**：{item_desc}")
 
         st.divider()
         st.subheader("AI 智慧導游服務")
@@ -869,7 +869,7 @@ if st.session_state.get("current_item"):
             preset_input = f"請問以【{item['name']}】為中心，駕駛/騎乘【{transport_mode}】過來，最方便的專屬停車地點在哪裡？"
         if chip_col3.button("🏛️ 熱門景點", use_container_width=True):
             preset_input = f"請問【{item['name']}】附近有哪些推薦的熱門景點？"
-        if chip_col4.button("☕ 精選咖啡", use_container_width=True):
+        if chip_col4.button("☕️ 精選咖啡", use_container_width=True):
             preset_input = f"請問【{item['name']}】附近有哪些適合休息的氣氛咖啡廳？"
 
         user_input = st.chat_input("詢問導游，例如：附近哪裡好停車？") or preset_input or ""
@@ -1030,9 +1030,9 @@ if st.session_state.get("current_item"):
 
 # 尚未生成或選擇景點時，顯示首頁提示與熱門按鈕
 else:
-    st.markdown('<div class="main-title">高雄 50美食 × 50景點 隨機導覽系統</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">高雄 50 家美食 × 50 個景點隨機導覽系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">【高雄商圈振興專案】精選在地美食與特色景點，精準導流實體人潮！</div>', unsafe_allow_html=True)
-
+    
     st.subheader("💡 簡單 3 步驟，探索高雄美食與景點")
     step_col1, step_col2, step_col3 = st.columns(3)
   
