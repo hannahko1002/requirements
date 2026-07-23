@@ -1032,16 +1032,16 @@ if st.session_state.get("current_item"):
 else:
     st.markdown('<div class="main-title">高雄 50 家美食 × 50 個景點隨機導覽系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">【高雄商圈振興專案】精選在地美食與特色景點，精準導流實體人潮！</div>', unsafe_allow_html=True)
-    
+
     st.subheader("💡 簡單 3 步驟，探索高雄美食與景點")
     step_col1, step_col2, step_col3 = st.columns(3)
   
     with step_col1:
         st.markdown("#### 1️⃣ 選擇探索區域\n在 **「左側」** 選單選擇想前往的高雄行政區。")
     with step_col2:
-        st.markdown("#### 2️⃣ 一鍵抽卡生成\n點擊 **「生成隨機導覽」**，系統將為您實時定位推薦地點。")
+        st.markdown("#### 2️⃣ 一鍵抽卡生成\n點擊 **「生成隨機導覽」**，系統將為您隨機推薦地點。")
     with step_col3:
-        st.markdown("#### 3️⃣ 開啟個人化導覽\n依照您的交通方式與需求，獲得最佳路徑與景點安排！")
+        st.markdown("#### 3️⃣ 開啟個人化導覽\n依照交通方式與需求，獲得最佳路徑與景點安排！")
 
     st.divider()
 
